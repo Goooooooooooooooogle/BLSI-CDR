@@ -13,7 +13,7 @@ import pandas as pd
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 
-from model import PPGN
+from model import BLSICDR
 from utils.metrics import metrics
 from dataset import PPGN_DATASET
 
@@ -181,7 +181,7 @@ def train():
     target_uid2seq_padding = dict(zip(target_domain_user_historical_sequence_ulist, target_pos_seq))
 
     print(dataset.domain1_user_number,dataset.domain1_item_number,dataset.domain2_item_number)
-    model = PPGN(dataset.domain1_user_number,dataset.domain1_item_number,dataset.domain2_item_number,
+    model = BLSICDR(dataset.domain1_user_number,dataset.domain1_item_number,dataset.domain2_item_number,
     norm_adj_mat=dataset.nor_adj,args=args, source_uid2seq_padding=source_uid2seq_padding, target_uid2seq_padding=target_uid2seq_padding)
     
     if args.cuda:

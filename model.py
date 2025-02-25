@@ -25,10 +25,10 @@ class MetaNet(torch.nn.Module):
         return output.squeeze(1)
     
 
-class PPGN(torch.nn.Module):
+class BLSICDR(torch.nn.Module):
 
     def __init__(self,user_number,domain1_item_number,domain2_item_number,norm_adj_mat,args, source_uid2seq_padding, target_uid2seq_padding) -> None:
-        super(PPGN,self).__init__()
+        super(BLSICDR,self).__init__()
 
         self.args = args
         self.user_number = user_number

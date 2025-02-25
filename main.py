@@ -116,11 +116,11 @@ def train():
         args.weight_ss = args.weight * args.cmp_s
         args.weight_tt = args.weight * args.cmp_t
 
-        dataset = PPGN_DATASET("./data/bo-mtv/raw/reviews_Books_5.json.gz",
-                                "./data/bo-mtv/raw/reviews_Movies_and_TV_5.json.gz", args)
+        dataset = PPGN_DATASET("./data/bo-mtv/raw/Apps.json.gz",
+                                "./data/bo-mtv/raw/MoTV.json.gz", args)
 
-        target_domain_name = 'reviews_Movies_and_TV'
-        source_domain_name = 'reviews_Books'
+        target_domain_name = 'Apps'
+        source_domain_name = 'MoTV'
 
     else:
         exit()

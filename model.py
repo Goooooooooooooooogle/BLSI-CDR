@@ -104,7 +104,6 @@ class BLSICDR(torch.nn.Module):
         self.ncf_drouput = torch.nn.ModuleList()
         self.args.mlp_layers_ncf = [32 * (self.args.graph_layer_K + 1)*2] + self.args.mlp_layers  # [32,8]  [256, 32, 8, 1]
         if args.graph_encoder == 'no-graph-ncf':
-            print("===============no-graph-ncf=======================")
             self.args.mlp_layers_ncf = [32 * 2] + self.args.mlp_layers
         for k in range(len(self.args.mlp_layers_ncf)-1):
             self.ncf_weights_s.append(torch.nn.Linear(self.args.mlp_layers_ncf[k],self.args.mlp_layers_ncf[k+1]))
@@ -297,7 +296,6 @@ class BLSICDR(torch.nn.Module):
         self.logits_t = torch.squeeze(self.logits_t)
         self.logits_s = self.sigmod(self.logits_s)
         self.logits_t = self.sigmod(self.logits_t)
-        # print(self.logits_s)
         return self.logits_s, self.logits_t
 
     def _split_A_hat(self,X):

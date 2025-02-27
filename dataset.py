@@ -1,22 +1,21 @@
 import os
-import json
 import time
+import json
 import gzip
 import logging
+logger = logging.getLogger("BLSICDR_PYTORCH.DATASET")
 import argparse
 
-import numpy as np
 import pandas as pd
+import numpy as np
 import scipy.sparse as sp
 
-from tqdm import tqdm
-from torch.utils.data import Dataset
-from collections import defaultdict
 from multiprocessing import Pool
+
+from tqdm import tqdm
+from collections import defaultdict
+from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
-
-
-logger = logging.getLogger("PPGN_PYTORCH.DATASET")
 
 
 class PPGN_DATASET(Dataset):
@@ -92,10 +91,8 @@ class PPGN_DATASET(Dataset):
 
 
     def __getitem__(self, index):
-
         if self.phase == "train":
             return self.cross_train_dict['user'][index],self.cross_train_dict['item_s'][index],self.cross_train_dict['item_t'][index],self.cross_train_dict['label_s'][index],self.cross_train_dict['label_t'][index]
-
         else:
             return self.cross_test_dict['user'][index],self.cross_test_dict['item_s'][index],self.cross_test_dict['item_t'][index],self.cross_test_dict['label_s'][index],self.cross_test_dict['label_t'][index]
     
@@ -136,17 +133,16 @@ class PPGN_DATASET(Dataset):
     
     def normalized_adj_single(self,adj):
         rowsum = np.array(adj.sum(1))
-
         d_inv = np.power(rowsum, -1).flatten()
         d_inv[np.isinf(d_inv)] = 0.
         d_mat_inv = sp.diags(d_inv)
-
         norm_adj = d_mat_inv.dot(adj)
         return norm_adj
 
     def build_data_mid (self) -> None:
         domain1 = dict()
         domain2 = dict()
+
         if not self.args.is_douban_dataset:
             with gzip.open(self.domain1_path,"r") as f:
                 for index,line in tqdm(enumerate(f)):
@@ -156,11 +152,13 @@ class PPGN_DATASET(Dataset):
                     domain2[index] = json.loads(line)
         else:
             with open(self.domain1_path, "r", encoding='utf-8') as f:
-                for idx, line in tqdm(enumerate(f.readlines())):
-                    domain1[idx] = json.loads(line)
+                for idx, line in tqdm(enumerate(f.readlines()[1:])):
+                    tmp_list = line.strip().split(',')
+                    domain1[idx] = dict(zip(['reviewerID','asin','overall','unixReviewTime'], tmp_list))
             with open(self.domain2_path, "r", encoding='utf-8') as f:
-                for idx, line in tqdm(enumerate(f.readlines())):
-                    domain2[idx] = json.loads(line)
+                for idx, line in tqdm(enumerate(f.readlines()[1:])):
+                    tmp_list = line.strip().split(',')
+                    domain2[idx] = dict(zip(['reviewerID','asin','overall','unixReviewTime'], tmp_list))
 
         domain1 = pd.DataFrame.from_dict(domain1,orient='index')
         domain2 = pd.DataFrame.from_dict(domain2,orient='index')
@@ -169,16 +167,15 @@ class PPGN_DATASET(Dataset):
         domain2_users = set(domain2['reviewerID'].tolist())
 
         overlapping_users = list(domain1_users & domain2_users)
+        
         domain1 = domain1[domain1['reviewerID'].isin(overlapping_users)][['reviewerID','asin','overall','unixReviewTime']]
         domain2 = domain2[domain2['reviewerID'].isin(overlapping_users)][['reviewerID','asin','overall','unixReviewTime']]
 
-      
         domain1.to_csv(self.domain1_mid_path,index=False)
         domain2.to_csv(self.domain2_mid_path,index=False)
 
         logger.info(f"Build raw data 1 to {self.domain1_mid_path}")
         logger.info(f"Build raw data 2 to {self.domain2_mid_path}")
-
 
     def build_data_ready(self):
         domain1 = pd.read_csv(self.domain1_mid_path,usecols=[0,1], sep=',')
@@ -187,14 +184,14 @@ class PPGN_DATASET(Dataset):
         self.domain2_user_number = len(domain2['reviewerID'].unique().tolist())
         self.domain1_item_number = len(domain1['asin'].unique().tolist())
         self.domain2_item_number = len(domain2['asin'].unique().tolist())
-        # 2. remapping
+        
         domain1['uidx'] = domain1['reviewerID'].map(dict(zip(domain1['reviewerID'].unique(),range(self.domain1_user_number))))
         domain1['iidx'] = domain1['asin'].map(dict(zip(domain1['asin'].unique(),range(self.domain1_item_number))))
         domain2['uidx'] = domain2['reviewerID'].map(dict(zip(domain2['reviewerID'].unique(),range(self.domain2_user_number))))
         domain2['iidx'] = domain2['asin'].map(dict(zip(domain2['asin'].unique(),range(self.domain2_item_number))))
         del domain1['reviewerID'], domain1['asin']
         del domain2['reviewerID'], domain2['asin']
-        # 3. overlap
+
         self.domain1_user_number = len(domain1['uidx'].unique().tolist())
         self.domain2_user_number = len(domain2['uidx'].unique().tolist())
         self.domain1_item_number = len(domain1['iidx'].unique().tolist())
@@ -202,16 +199,18 @@ class PPGN_DATASET(Dataset):
 
         logger.info(f"Load {self.domain1_path} data successfully with {self.domain1_user_number} users, {self.domain1_item_number} products and {domain1.shape[0]} interactions.")
         logger.info(f"Load {self.domain2_path} data successfully with {self.domain2_user_number} users, {self.domain2_item_number} products and {domain2.shape[0]} interactions.")
-        # 4. {uId: set(iId), .... }
+
         self.domain1_pos_dict, self.domain1_pos_dict_list = self.construct_pos_dict(domain1)
         logger.info("Build domain1 pos dict sucessfully")
         self.domain2_pos_dict, self.domain2_pos_dict_list = self.construct_pos_dict(domain2)
         logger.info("Build domain2 pos dict sucessfully")
-        # 5. 
+
         domain1_train_df, domain1_test_df = self._split_train_test(domain1,self.domain1_train_pos_path,self.domain1_test_pos_path,self.domain1_user_number)
         logger.info("Build domain1 dataframe sucessfully")
         domain2_train_df, domain2_test_df = self._split_train_test(domain2,self.domain2_train_pos_path,self.domain2_test_pos_path,self.domain2_user_number)
+
         logger.info("Build domain2 dataframe sucessfully")
+
         self.domain1_train_dict = self._construct_train(domain1_train_df,self.domain1_item_number,self.domain1_pos_dict,self.domain1_train_npy_path)
         logger.info("Build domain1 train data sucessfully")
         self.domain1_test_dict = self._construct_test(domain1_test_df,self.domain1_item_number, self.domain1_pos_dict,self.domain1_test_npy_path)
@@ -226,13 +225,10 @@ class PPGN_DATASET(Dataset):
         logger.info("Building data cross ..")
         d1_t = 0
         d2_s = 0
-
         nargs = [(user, self.domain1_pos_dict, self.domain2_pos_dict,self.domain1_item_number, self.domain2_item_number,
                     self.args.train_neg_num, self.domain1_pos_dict_list, self.domain2_pos_dict_list) for user in range(self.domain1_user_number)]
-        
 
         extend_list = list()
-
         for each in nargs:
             extend_list.append(self._cross_build(each))
 
@@ -255,7 +251,6 @@ class PPGN_DATASET(Dataset):
                 self.domain1_train_dict['label'].extend(extend_labels)
             else:
                 equ_.append(user)
-
         start = time.time()
         q_s = np.argsort(np.array(self.domain1_train_dict['user']))
         q_t = np.argsort(np.array(self.domain2_train_dict['user']))
@@ -264,7 +259,6 @@ class PPGN_DATASET(Dataset):
         users_t = np.array(self.domain2_train_dict['user'])[q_t].tolist()
 
         assert users_s == users_t
-
         users = users_s
 
         items_s = np.array(self.domain1_train_dict['item'])[q_s].tolist()
@@ -279,19 +273,15 @@ class PPGN_DATASET(Dataset):
         assert self.domain1_test_dict['user'] == self.domain2_test_dict['user']
         self.cross_test_dict = {'user': self.domain1_test_dict['user'], 'item_s': self.domain1_test_dict['item'], 'item_t': self.domain2_test_dict['item'],
                     'label_s': self.domain1_test_dict['label'], 'label_t':self.domain2_test_dict['label']}
-
         np.save(self.test_npy_path, self.cross_test_dict)
-
 
     def _split_train_test(self,df,train_file_path,test_file_path,num_users):
         test_list = []
         logger.info("Spliting data of train and test")
-        with Pool(self.args.processor_num) as pool:
-            nargs = [(user, df, self.args.test_size) for user in range(num_users)]
-            
-            test_list = tqdm(pool.map(self._split, nargs))
-            pool.close()
-            pool.join()
+
+        nargs = [(user, df, self.args.test_size) for user in range(num_users)]
+        for each in nargs:
+            test_list.append(self._split(each))
 
         test_df = pd.concat(test_list)
         train_df = df.drop(test_df.index)
@@ -305,7 +295,6 @@ class PPGN_DATASET(Dataset):
         return train_df, test_df
     
     def _construct_train(self, df,num_items, pos_dict,path):
-        # It's desperate to use df to calculate... so slow!!!
         users = []
         items = []
         labels = []
@@ -318,8 +307,6 @@ class PPGN_DATASET(Dataset):
             users += batch_users
             items += batch_items
             labels += batch_labels
-
-
         data_dict = {'user': users, 'item': items, 'label': labels}
         np.save(path, data_dict)
 
@@ -339,7 +326,6 @@ class PPGN_DATASET(Dataset):
             users += batch_users
             items += batch_items
             labels += batch_labels
-
         data_dict = {'user': users, 'item': items, 'label': labels}
         np.save(path, data_dict)
 
@@ -348,7 +334,7 @@ class PPGN_DATASET(Dataset):
     @staticmethod
     def _split(args):
         user, df, test_size = args
-        sample_test = df[df['uidx']==user].tail(test_size)
+        sample_test = df[df['uidx']==user].tail(test_size)  # 最后一行 
         return sample_test
 
     @staticmethod
@@ -383,10 +369,10 @@ class PPGN_DATASET(Dataset):
         flag = ''
         if num_item_s > num_item_t:
             flag = 't'
-            pos_num = num_item_s - num_item_t  # positive sample  
-            neg_num = per_neg_num * pos_num 
-            pos_set = set(posdict_t[user])
-            neg_set = set(range(num_items_t)) - pos_set
+            pos_num = num_item_s - num_item_t  # 正样本的数目  
+            neg_num = per_neg_num * pos_num  # 负样本数目 = 正*4
+            pos_set = set(posdict_t[user])  # 取出 t中的全部正样本用户
+            neg_set = set(range(num_items_t)) - pos_set  # t中剩余的作为负样本
         elif num_item_t > num_item_s:
             flag = 's'
             pos_num = num_item_t-num_item_s

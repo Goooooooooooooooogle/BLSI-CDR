@@ -106,8 +106,8 @@ def train():
     if args.task_id == 1:
         args.weight_ss = args.weight * args.cmp_s
         args.weight_tt = args.weight * args.cmp_t
-        dataset = PPGN_DATASET("/data/zhangjin/cdr/BLSI-CDR-Seq/datasets/newTask/31-5486-AppsforAndroid_Electronics/raw/AppsforAndroid.json.gz",
-        "/data/zhangjin/cdr/BLSI-CDR-Seq/datasets/newTask/31-5486-AppsforAndroid_Electronics/raw/Electronics.json.gz", args)
+        dataset = PPGN_DATASET("./data/31-5486-AppsforAndroid_Electronics/raw/AppsforAndroid.json.gz",
+                            "./data/31-5486-AppsforAndroid_Electronics/raw/Electronics.json.gz", args)
 
         source_domain_name = 'AppsforAndroid'
         target_domain_name = 'Electronics'

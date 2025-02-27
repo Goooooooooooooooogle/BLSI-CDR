@@ -113,7 +113,6 @@ def train():
         target_domain_name = 'Electronics'
 
     else:
-        print("输入任务不对")
         exit()
 
     data_loader = DataLoader(dataset,batch_size=args.batch_size,shuffle=True)
@@ -259,7 +258,6 @@ def train():
             loss_list_s = loss_fuction(logits_s,sl_)
 
             loss_list_t = loss_fuction(logits_t,tl_)
-            # print(loss_list_s.shape)
             
             loss_s  = torch.mean(torch.multiply(loss_list_s,loss_w_s))
             loss_t  = torch.mean(torch.multiply(loss_list_t,loss_w_t))
@@ -297,7 +295,6 @@ def train():
 
                             if ndcg_last_s == NDCG_s[-1] and ndcg_last_t == NDCG_t[-1]:
                                 if early_stop >= 6:
-                                    print("*"*20, 'Early Stop! after 6 CMPs..')
                                     break
                                 else:
                                     early_stop += 1

@@ -1,9 +1,11 @@
-from re import S
-import torch
 import math
+
+import torch
 import numpy as np
-import torch.nn.functional as F
 import torch.nn as nn
+import torch.nn.functional as F
+
+from re import S
 
 
 class MetaNet(torch.nn.Module):
@@ -37,7 +39,6 @@ class BLSICDR(torch.nn.Module):
 
         self.source_uid2seq_padding = source_uid2seq_padding
         self.target_uid2seq_padding = target_uid2seq_padding
-        # for characteristic encoder
         self.event_K_source_seq = torch.nn.Sequential()
         self.event_K_target_seq = torch.nn.Sequential()
 
@@ -47,7 +48,6 @@ class BLSICDR(torch.nn.Module):
 
             self.event_K_target_seq.add_module(f"linear_{i}", torch.nn.Linear(self.args.embedding_size, self.args.embedding_size))
             self.event_K_target_seq.add_module(f"relu_{i}", torch.nn.ReLU())
-        
         
         self.event_K_source_seq.add_module("out_s", torch.nn.Linear(self.args.embedding_size, 1, False))
         self.event_K_target_seq.add_module("out_t", torch.nn.Linear(self.args.embedding_size, 1, False))
@@ -63,10 +63,9 @@ class BLSICDR(torch.nn.Module):
             self.decoder_tt = torch.nn.Sequential(torch.nn.Linear(self.args.embedding_size, self.args.meta_dim), torch.nn.ReLU(),
                                             torch.nn.Linear(self.args.meta_dim, (self.args.embedding_size) * (self.args.embedding_size)))
         self.event_softmax = torch.nn.Softmax(dim=1)
-
         self.user_embedding = torch.nn.Embedding(user_number,self.args.embedding_size)
-        self.item_embeddding_s = torch.nn.Embedding(domain1_item_number,self.args.embedding_size)
-        self.item_embeddding_t = torch.nn.Embedding(domain2_item_number,self.args.embedding_size)
+        self.item_embeddding_s = torch.nn.Embedding(self.domain1_item_number,self.args.embedding_size)
+        self.item_embeddding_t = torch.nn.Embedding(self.domain2_item_number,self.args.embedding_size)
 
         self.source_domain_embedding_decompose = torch.nn.Sequential(torch.nn.Linear(self.args.embedding_size * 8, self.args.embedding_size * 4), torch.nn.ReLU(),
                                             torch.nn.Linear(self.args.embedding_size * 4, self.args.embedding_size * 2), torch.nn.ReLU(),
@@ -75,7 +74,6 @@ class BLSICDR(torch.nn.Module):
                                            torch.nn.Linear(self.args.embedding_size * 2, self.args.embedding_size))
 
         if not args.is_simple_pool:
-            print("double Pool")
             self.item_embeddding_s_special = torch.nn.Embedding(domain1_item_number,self.args.embedding_size)
             self.item_embeddding_t_special = torch.nn.Embedding(domain2_item_number,self.args.embedding_size)
 
@@ -106,6 +104,7 @@ class BLSICDR(torch.nn.Module):
         self.ncf_drouput = torch.nn.ModuleList()
         self.args.mlp_layers_ncf = [32 * (self.args.graph_layer_K + 1)*2] + self.args.mlp_layers  # [32,8]  [256, 32, 8, 1]
         if args.graph_encoder == 'no-graph-ncf':
+            print("===============no-graph-ncf=======================")
             self.args.mlp_layers_ncf = [32 * 2] + self.args.mlp_layers
         for k in range(len(self.args.mlp_layers_ncf)-1):
             self.ncf_weights_s.append(torch.nn.Linear(self.args.mlp_layers_ncf[k],self.args.mlp_layers_ncf[k+1]))
@@ -130,6 +129,8 @@ class BLSICDR(torch.nn.Module):
         
         self.relu = torch.nn.ReLU()
         self.leaky_relu = torch.nn.LeakyReLU(0.2)
+        self.init()
+
         self.mapping = torch.nn.Parameter(torch.randn(128,128))
         self.mapping_s = torch.nn.Parameter(torch.randn(128,128))
         self.mapping_t = torch.nn.Parameter(torch.randn(128,128))
@@ -148,7 +149,6 @@ class BLSICDR(torch.nn.Module):
         for k in range(3):
             weight_dict.update({'W_gc_%d'%k: nn.Parameter(initializer(torch.empty(layers[k],
                                                                       layers[k+1])))})
-
         return weight_dict
 
     def init_weight_for_ngcf(self):
@@ -216,7 +216,6 @@ class BLSICDR(torch.nn.Module):
                 ego_embeddings = nn.LeakyReLU(negative_slope=0.2)(sum_embeddings + bi_embeddings)
                 ego_embeddings = nn.Dropout(0.1)(ego_embeddings)
                 norm_embeddings = F.normalize(ego_embeddings, p=2, dim=1)
-
                 all_embeddings += [norm_embeddings]
         elif self.args.graph_encoder == 'semi-gcn':
             ego_embeddings = embeddings
@@ -224,24 +223,24 @@ class BLSICDR(torch.nn.Module):
                 side_embeddings = torch.sparse.mm(self.A_fold_hat, ego_embeddings)
                 ego_embeddings = torch.matmul(side_embeddings, self.semi_gcn_encoder_dict['W_gc_%d' % k])
                 ego_embeddings = self.relu(ego_embeddings)
-
                 all_embeddings += [ego_embeddings]
-        
+
         elif self.args.graph_encoder == 'no-graph-ncf':
             pass 
 
-        
         else:
-            print('self.args.graph_encoder 参数有误')
             exit()
         
-        all_embeddings = torch.cat(all_embeddings,dim=1)
+        if self.args.merge_type == 'cat':
+            all_embeddings = torch.cat(all_embeddings,dim=1)
+        elif self.args.merge_type == 'mean':
+            all_embeddings = np.mean(all_embeddings,dim=1)
         item_embeddings_s, user_embeddings, item_embeddings_t = all_embeddings[:self.domain1_item_number,:],all_embeddings[self.domain1_item_number:self.domain1_item_number+self.user_number,:],all_embeddings[self.domain1_item_number+self.user_number:,:]
-
         user_embeddings_s = user_embeddings[u]
         user_embeddings_t = user_embeddings[u]
 
         if self.args.NCForMF == 'MF':
+
             self.logits_s = torch.mean(torch.multiply(user_embeddings[u],item_embeddings_s[si]),1)
             self.logits_t = torch.mean(torch.multiply(user_embeddings[u],item_embeddings_t[ti]),1)
 
@@ -294,11 +293,11 @@ class BLSICDR(torch.nn.Module):
         else:
             raise ValueError
 
-
         self.logits_s = torch.squeeze(self.logits_s)
         self.logits_t = torch.squeeze(self.logits_t)
         self.logits_s = self.sigmod(self.logits_s)
         self.logits_t = self.sigmod(self.logits_t)
+        # print(self.logits_s)
         return self.logits_s, self.logits_t
 
     def _split_A_hat(self,X):
